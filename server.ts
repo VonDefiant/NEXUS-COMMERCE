@@ -487,6 +487,292 @@ volumes:
   });
 
   // ==========================================
+  // 🔧 HELPER - obtener businessId del usuario
+  // ==========================================
+  async function getBusinessId(req: express.Request): Promise<string | null> {
+    const session = await auth.api.getSession({ headers: req.headers as any });
+    if (!session?.user) return null;
+    const user = await prisma.user.findUnique({ where: { id: session.user.id } });
+    return process.env.NEXUS_BUSINESS_ID || user?.businessId || null;
+  }
+
+  // ==========================================
+  // 📦 CATEGORÍAS
+  // ==========================================
+  app.get('/api/v1/categories', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const categories = await prisma.category.findMany({ where: { businessId }, orderBy: { name: 'asc' } });
+    res.json(categories);
+  });
+  app.post('/api/v1/categories', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const { name, color } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+    const category = await prisma.category.create({ data: { name: name.trim(), color: color || '#6366f1', businessId } });
+    res.json(category);
+  });
+  app.put('/api/v1/categories/:id', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const { name, color } = req.body;
+    const category = await prisma.category.update({ where: { id: req.params.id }, data: { name, color } });
+    res.json(category);
+  });
+  app.delete('/api/v1/categories/:id', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    await prisma.category.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  });
+
+  // ==========================================
+  // 🏢 PROVEEDORES
+  // ==========================================
+  app.get('/api/v1/suppliers', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const suppliers = await prisma.supplier.findMany({ where: { businessId, isActive: true }, orderBy: { name: 'asc' } });
+    res.json(suppliers);
+  });
+  app.post('/api/v1/suppliers', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const { name, contact, phone, email, address, nit } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+    const supplier = await prisma.supplier.create({ data: { name: name.trim(), contact, phone, email, address, nit, businessId } });
+    res.json(supplier);
+  });
+  app.put('/api/v1/suppliers/:id', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const { name, contact, phone, email, address, nit, isActive } = req.body;
+    const supplier = await prisma.supplier.update({ where: { id: req.params.id }, data: { name, contact, phone, email, address, nit, isActive } });
+    res.json(supplier);
+  });
+  app.delete('/api/v1/suppliers/:id', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    await prisma.supplier.update({ where: { id: req.params.id }, data: { isActive: false } });
+    res.json({ success: true });
+  });
+
+  // ==========================================
+  // 👥 CLIENTES
+  // ==========================================
+  app.get('/api/v1/customers', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const customers = await prisma.customer.findMany({ where: { businessId, isActive: true }, orderBy: { name: 'asc' } });
+    res.json(customers);
+  });
+  app.post('/api/v1/customers', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const { name, nit, phone, email, address, creditLimit } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+    const customer = await prisma.customer.create({ data: { name: name.trim(), nit, phone, email, address, creditLimit: creditLimit || 0, businessId } });
+    res.json(customer);
+  });
+  app.put('/api/v1/customers/:id', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const { name, nit, phone, email, address, creditLimit, isActive } = req.body;
+    const customer = await prisma.customer.update({ where: { id: req.params.id }, data: { name, nit, phone, email, address, creditLimit, isActive } });
+    res.json(customer);
+  });
+
+  // ==========================================
+  // 🛒 VENTAS (nuevo modelo Sale)
+  // ==========================================
+  app.get('/api/v1/sales', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const sales = await prisma.sale.findMany({
+      where: { businessId },
+      include: { customer: true, items: { include: { product: true } }, payments: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100
+    });
+    res.json(sales);
+  });
+
+  app.post('/api/v1/sales', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const session = await auth.api.getSession({ headers: req.headers as any });
+    const { items, customerId, discount, tax, notes, amountPaid, status, branchId } = req.body;
+    if (!items?.length) return res.status(400).json({ error: 'La venta debe tener al menos un producto' });
+
+    // Calcular totales
+    let subtotal = 0;
+    for (const item of items) {
+      subtotal += item.price * item.quantity - (item.discount || 0);
+    }
+    const total = subtotal + (tax || 0) - (discount || 0);
+
+    // Generar número de venta
+    const count = await prisma.sale.count({ where: { businessId } });
+    const number = `NV-${String(count + 1).padStart(4, '0')}`;
+
+    const sale = await prisma.sale.create({
+      data: {
+        number, status: status || 'completed', subtotal, discount: discount || 0,
+        tax: tax || 0, total, amountPaid: amountPaid || total,
+        notes, customerId: customerId || null, businessId,
+        branchId: branchId || null, userId: session!.user.id,
+        items: { create: items.map((i: any) => ({ productId: i.productId, quantity: i.quantity, price: i.price, discount: i.discount || 0, subtotal: i.price * i.quantity - (i.discount || 0) })) },
+        ...(amountPaid > 0 && { payments: { create: [{ amount: amountPaid, method: 'cash' }] } })
+      },
+      include: { items: true }
+    });
+
+    // Descontar stock y registrar movimiento
+    for (const item of items) {
+      const product = await prisma.product.findUnique({ where: { id: item.productId } });
+      if (product) {
+        await prisma.product.update({ where: { id: item.productId }, data: { stock: { decrement: item.quantity } } });
+        await prisma.stockMovement.create({ data: { productId: item.productId, type: 'out', quantity: item.quantity, reason: 'sale', refId: sale.id, before: product.stock, after: product.stock - item.quantity, userId: session!.user.id } });
+      }
+    }
+
+    // Actualizar balance del cliente si es crédito
+    if (customerId && status === 'credit') {
+      await prisma.customer.update({ where: { id: customerId }, data: { balance: { increment: total - (amountPaid || 0) } } });
+    }
+
+    res.json(sale);
+  });
+
+  // ==========================================
+  // 📦 COMPRAS
+  // ==========================================
+  app.get('/api/v1/purchases', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const purchases = await prisma.purchase.findMany({
+      where: { businessId },
+      include: { supplier: true, items: { include: { product: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 100
+    });
+    res.json(purchases);
+  });
+
+  app.post('/api/v1/purchases', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const { supplierId, items, tax, notes } = req.body;
+    if (!supplierId) return res.status(400).json({ error: 'Proveedor requerido' });
+    if (!items?.length) return res.status(400).json({ error: 'La compra debe tener al menos un producto' });
+
+    let subtotal = 0;
+    for (const item of items) subtotal += item.cost * item.quantity;
+    const total = subtotal + (tax || 0);
+    const count = await prisma.purchase.count({ where: { businessId } });
+    const number = `OC-${String(count + 1).padStart(4, '0')}`;
+
+    const purchase = await prisma.purchase.create({
+      data: {
+        number, status: 'pending', supplierId, businessId, subtotal, tax: tax || 0, total, notes,
+        items: { create: items.map((i: any) => ({ productId: i.productId, quantity: i.quantity, cost: i.cost, subtotal: i.cost * i.quantity })) }
+      },
+      include: { items: true }
+    });
+    res.json(purchase);
+  });
+
+  app.patch('/api/v1/purchases/:id/receive', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const session = await auth.api.getSession({ headers: req.headers as any });
+    const purchase = await prisma.purchase.findUnique({ where: { id: req.params.id }, include: { items: true } });
+    if (!purchase) return res.status(404).json({ error: 'Compra no encontrada' });
+
+    // Actualizar stock al recibir
+    for (const item of purchase.items) {
+      const product = await prisma.product.findUnique({ where: { id: item.productId } });
+      if (product) {
+        await prisma.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity }, cost: item.cost } });
+        await prisma.stockMovement.create({ data: { productId: item.productId, type: 'in', quantity: item.quantity, reason: 'purchase', refId: purchase.id, before: product.stock, after: product.stock + item.quantity, userId: session!.user.id } });
+      }
+    }
+
+    const updated = await prisma.purchase.update({ where: { id: req.params.id }, data: { status: 'received', receivedAt: new Date() } });
+    res.json(updated);
+  });
+
+  // ==========================================
+  // 💰 GASTOS
+  // ==========================================
+  app.get('/api/v1/expenses', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const expenses = await prisma.expense.findMany({ where: { businessId }, orderBy: { date: 'desc' }, take: 100 });
+    res.json(expenses);
+  });
+
+  app.post('/api/v1/expenses', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const session = await auth.api.getSession({ headers: req.headers as any });
+    const { description, category, amount, date } = req.body;
+    if (!description?.trim() || !amount || !category) return res.status(400).json({ error: 'Descripción, categoría y monto requeridos' });
+    const expense = await prisma.expense.create({ data: { description: description.trim(), category, amount: parseFloat(amount), date: date ? new Date(date) : new Date(), businessId, userId: session!.user.id } });
+    res.json(expense);
+  });
+
+  app.delete('/api/v1/expenses/:id', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    await prisma.expense.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  });
+
+  // ==========================================
+  // 📊 INVENTARIO - Movimientos (Kardex)
+  // ==========================================
+  app.get('/api/v1/inventory/movements', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const movements = await prisma.stockMovement.findMany({
+      where: { product: { businessId } },
+      include: { product: true },
+      orderBy: { createdAt: 'desc' },
+      take: 200
+    });
+    res.json(movements);
+  });
+
+  app.post('/api/v1/inventory/adjust', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const session = await auth.api.getSession({ headers: req.headers as any });
+    const { productId, quantity, reason } = req.body;
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+    const newStock = product.stock + quantity;
+    if (newStock < 0) return res.status(400).json({ error: 'Stock no puede ser negativo' });
+    await prisma.product.update({ where: { id: productId }, data: { stock: newStock } });
+    await prisma.stockMovement.create({ data: { productId, type: 'adjustment', quantity, reason: reason || 'adjustment', before: product.stock, after: newStock, userId: session!.user.id } });
+    res.json({ success: true, newStock });
+  });
+
+  // Stock bajo mínimo
+  app.get('/api/v1/inventory/alerts', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    // @ts-ignore - Ignore exact types since we use raw prisma
+    const products = await prisma.product.findMany({
+      where: { businessId, isActive: true },
+      select: { id: true, name: true, sku: true, stock: true, minStock: true, category: { select: { name: true, color: true } } }
+    });
+    const alerts = products.filter((p: any) => p.stock <= p.minStock);
+    res.json(alerts);
+  });
+
+  // ==========================================
   // ⚡ VITE MIDDLEWARE (Frontend)
   // ==========================================
   
