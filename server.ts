@@ -74,20 +74,24 @@ async function startServer() {
 
           if (!session?.user) return next(); // El auth middleware lo rechazará después
 
-          const user = await prisma.user.findUnique({
-              where: { id: session.user.id },
-              include: { business: { include: { license: true } } }
+          // Buscar businessId con fallback
+          const businessId = process.env.NEXUS_BUSINESS_ID ||
+              (await prisma.user.findUnique({ where: { id: session.user.id } }))?.businessId ||
+              (await prisma.business.findFirst({ orderBy: { createdAt: 'asc' }, include: { license: true } }))?.id;
+
+          if (!businessId) return next(); // sin empresa = instalación nueva
+
+          const business = await prisma.business.findUnique({
+              where: { id: businessId },
+              include: { license: true }
           });
 
-          if (!user?.business) return next(); // sin empresa = instalación nueva, permitir
-          if (!user?.business?.license) {
-              return res.status(403).json({
-                  error: "license_not_found",
-                  message: "Sistema sin licencia activa. Contacta a tu proveedor Nexus Solutions."
-              });
+          if (!business) return next();
+          if (!business.license) {
+              return res.status(403).json({ error: "license_not_found", message: "Sistema sin licencia activa. Contacta a tu proveedor Nexus Solutions." });
           }
 
-          const license = user.business.license;
+          const license = business.license;
 
           // 1. Verificar integridad criptográfica (anti-tampering)
           if (!verifyLicenseIntegrity(license)) {
@@ -591,10 +595,65 @@ volumes:
     try {
       const businessId = await getBusinessId(req);
       if (!businessId) return res.status(401).json({ error: 'No autorizado' });
-      const products = await prisma.product.findMany({ where: { businessId, isActive: true }, orderBy: { name: 'asc' } });
+      // Incluir también category
+      const products = await prisma.product.findMany({ 
+        where: { businessId, isActive: true }, 
+        orderBy: { name: 'asc' },
+        include: { category: true }
+      });
       res.json(products);
     } catch (e: any) {
       logger.error('Error en /products', { error: e.message });
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  });
+
+  app.post('/api/v1/products-mgmt', async (req, res) => {
+    try {
+      const businessId = await getBusinessId(req);
+      if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+      const { name, sku, barcode, cost, price, description, minStock, categoryId } = req.body;
+      if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+      const product = await prisma.product.create({
+        data: {
+          name: name.trim(), sku, barcode, cost: cost || 0, price, description, minStock: minStock || 0,
+          categoryId: categoryId || null, businessId
+        }
+      });
+      res.json(product);
+    } catch (e: any) {
+      logger.error('Error en /products-mgmt POST', { error: e.message });
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  });
+
+  app.put('/api/v1/products-mgmt/:id', async (req, res) => {
+    try {
+      const businessId = await getBusinessId(req);
+      if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+      const { name, sku, barcode, cost, price, description, minStock, categoryId, isActive } = req.body;
+      const product = await prisma.product.update({
+        where: { id: req.params.id },
+        data: { name, sku, barcode, cost, price, description, minStock, categoryId, isActive }
+      });
+      res.json(product);
+    } catch (e: any) {
+      logger.error('Error en /products-mgmt PUT', { error: e.message });
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  });
+
+  app.delete('/api/v1/products-mgmt/:id', async (req, res) => {
+    try {
+      const businessId = await getBusinessId(req);
+      if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+      await prisma.product.update({
+        where: { id: req.params.id },
+        data: { isActive: false }
+      });
+      res.json({ success: true });
+    } catch (e: any) {
+      logger.error('Error en /products-mgmt DELETE', { error: e.message });
       res.status(500).json({ error: 'Error interno del servidor' });
     }
   });
