@@ -40,6 +40,12 @@ model Business {
   license      License?
   products     Product[]
   transactions Transaction[]
+  suppliers    Supplier[]
+  categories   Category[]
+  customers    Customer[]
+  sales        Sale[]
+  purchases    Purchase[]
+  expenses     Expense[]
   
   @@map("business")
 }
@@ -57,6 +63,7 @@ model Branch {
   business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   users        User[]
   transactions Transaction[]
+  sales        Sale[]
 
   @@map("branch")
 }
@@ -83,11 +90,21 @@ model Product {
   price       Float
   stock       Int      @default(0)
   businessId  String
+  categoryId  String?
+  cost        Float    @default(0)
+  minStock    Int      @default(0)
+  barcode     String?
+  imageUrl    String?
+  isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
-  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category    Category? @relation(fields: [categoryId], references: [id])
   transactions Transaction[]
+  saleItems    SaleItem[]
+  purchaseItems PurchaseItem[]
+  stockMovements StockMovement[]
   
   @@map("product")
 }
@@ -194,4 +211,182 @@ model Verification {
   updatedAt  DateTime?
 
   @@map("verification")
+}
+
+// PROVEEDORES
+model Supplier {
+  id          String    @id @default(uuid())
+  name        String
+  contact     String?
+  phone       String?
+  email       String?
+  address     String?
+  nit         String?
+  isActive    Boolean   @default(true)
+  businessId  String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  purchases   Purchase[]
+
+  @@map("supplier")
+}
+
+// CATEGORÍAS DE PRODUCTOS
+model Category {
+  id         String    @id @default(uuid())
+  name       String
+  color      String?   @default("#6366f1")
+  businessId String
+  createdAt  DateTime  @default(now())
+
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  products   Product[]
+
+  @@map("category")
+}
+
+// CLIENTES
+model Customer {
+  id         String    @id @default(uuid())
+  name       String
+  nit        String?
+  phone      String?
+  email      String?
+  address    String?
+  creditLimit Float    @default(0)
+  balance    Float     @default(0) // deuda actual
+  isActive   Boolean   @default(true)
+  businessId String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sales      Sale[]
+
+  @@map("customer")
+}
+
+// VENTAS (reemplaza Transaction type=sale con más detalle)
+model Sale {
+  id          String      @id @default(uuid())
+  number      String      // NV-0001, NV-0002...
+  status      String      @default("completed") // completed | credit | cancelled
+  subtotal    Float
+  discount    Float       @default(0)
+  tax         Float       @default(0)
+  total       Float
+  amountPaid  Float       @default(0)
+  notes       String?
+  customerId  String?
+  businessId  String
+  branchId    String?
+  userId      String
+  createdAt   DateTime    @default(now())
+
+  customer    Customer?   @relation(fields: [customerId], references: [id])
+  business    Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch      Branch?     @relation(fields: [branchId], references: [id])
+  items       SaleItem[]
+  payments    Payment[]
+
+  @@map("sale")
+}
+
+model SaleItem {
+  id        String  @id @default(uuid())
+  saleId    String
+  productId String
+  quantity  Int
+  price     Float
+  discount  Float   @default(0)
+  subtotal  Float
+
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@map("sale_item")
+}
+
+// COMPRAS A PROVEEDORES
+model Purchase {
+  id          String        @id @default(uuid())
+  number      String        // OC-0001...
+  status      String        @default("pending") // pending | received | cancelled
+  supplierId  String
+  businessId  String
+  subtotal    Float
+  tax         Float         @default(0)
+  total       Float
+  notes       String?
+  receivedAt  DateTime?
+  createdAt   DateTime      @default(now())
+
+  supplier    Supplier      @relation(fields: [supplierId], references: [id])
+  business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items       PurchaseItem[]
+
+  @@map("purchase")
+}
+
+model PurchaseItem {
+  id          String   @id @default(uuid())
+  purchaseId  String
+  productId   String
+  quantity    Int
+  cost        Float
+  subtotal    Float
+
+  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@map("purchase_item")
+}
+
+// GASTOS
+model Expense {
+  id          String   @id @default(uuid())
+  description String
+  category    String   // alquiler | servicios | nomina | otros
+  amount      Float
+  date        DateTime @default(now())
+  businessId  String
+  userId      String
+  createdAt   DateTime @default(now())
+
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("expense")
+}
+
+// PAGOS (para ventas a crédito)
+model Payment {
+  id        String   @id @default(uuid())
+  saleId    String
+  amount    Float
+  method    String   @default("cash") // cash | card | transfer
+  createdAt DateTime @default(now())
+
+  sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("payment")
+}
+
+// MOVIMIENTOS DE INVENTARIO (kardex)
+model StockMovement {
+  id        String   @id @default(uuid())
+  productId String
+  type      String   // in | out | adjustment
+  quantity  Int
+  reason    String?  // sale | purchase | adjustment | return
+  refId     String?  // ID de la venta o compra relacionada
+  before    Int
+  after     Int
+  userId    String
+  createdAt DateTime @default(now())
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("stock_movement")
 }
