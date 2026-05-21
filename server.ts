@@ -497,6 +497,16 @@ volumes:
   }
 
   // ==========================================
+  // 📦 PRODUCTOS (Helper for frontend)
+  // ==========================================
+  app.get('/api/v1/products', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+    const products = await prisma.product.findMany({ where: { businessId, isActive: true }, orderBy: { name: 'asc' } });
+    res.json(products);
+  });
+
+  // ==========================================
   // 📦 CATEGORÍAS
   // ==========================================
   app.get('/api/v1/categories', async (req, res) => {

@@ -16,6 +16,11 @@ import { SalesPage } from './pages/SalesPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { CustomersPage } from './pages/CustomersPage';
+import { SuppliersPage } from './pages/SuppliersPage';
+import { PurchasesPage } from './pages/PurchasesPage';
+import { ExpensesPage } from './pages/ExpensesPage';
+import { InventoryPage } from './pages/InventoryPage';
 import { SuspendedPage } from './pages/SuspendedPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { useAppStore } from './store/useAppStore';
@@ -71,6 +76,11 @@ export default function App() {
             <Route path="/dashboard" element={<PageWrapper><DashboardPage /></PageWrapper>} />
             <Route path="/products" element={<PageWrapper><ProductsPage /></PageWrapper>} />
             <Route path="/sales" element={<PageWrapper><SalesPage /></PageWrapper>} />
+            <Route path="/customers" element={<PageWrapper><CustomersPage /></PageWrapper>} />
+            <Route path="/suppliers" element={<PageWrapper><SuppliersPage /></PageWrapper>} />
+            <Route path="/purchases" element={<PageWrapper><PurchasesPage /></PageWrapper>} />
+            <Route path="/expenses" element={<PageWrapper><ExpensesPage /></PageWrapper>} />
+            <Route path="/inventory" element={<PageWrapper><InventoryPage /></PageWrapper>} />
             <Route path="/reports" element={<PageWrapper><ReportsPage /></PageWrapper>} />
             <Route path="/settings" element={<PageWrapper><SettingsPage /></PageWrapper>} />
             <Route path="*" element={<PageWrapper><NotFoundPage /></PageWrapper>} />

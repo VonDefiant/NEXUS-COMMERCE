@@ -18,7 +18,12 @@ import {
   Moon,
   Sun,
   MessageSquare,
-  Globe
+  Globe,
+  Users,
+  Truck,
+  ShoppingBag,
+  Receipt,
+  Boxes
 } from 'lucide-react';
 import { Logo } from './Logo';
 import { cn } from '../lib/utils';
@@ -63,6 +68,11 @@ export function Layout({ children }: LayoutProps) {
     { path: 'dashboard', label: t('layout.dashboard'), icon: LayoutDashboard },
     { path: 'products', label: t('layout.products'), icon: Package },
     { path: 'sales', label: t('layout.sales'), icon: ShoppingCart },
+    { path: 'customers', label: 'Clientes', icon: Users },
+    { path: 'suppliers', label: 'Proveedores', icon: Truck },
+    { path: 'purchases', label: 'Compras', icon: ShoppingBag },
+    { path: 'expenses', label: 'Gastos', icon: Receipt },
+    { path: 'inventory', label: 'Inventario', icon: Boxes },
     { path: 'reports', label: t('layout.reports'), icon: FileText },
   ];
 
