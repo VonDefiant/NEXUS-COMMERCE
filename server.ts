@@ -54,15 +54,16 @@ async function startServer() {
       const publicRoutes = [
           '/api/health',
           '/api/auth',
-          '/api/v1/license/update', // Recepción de licencia del Master
+          '/api/v1/license/update',
+          '/api/v1/telemetry/ping',
       ];
 
-      if (publicRoutes.some(r => req.path.startsWith(r))) {
+      if (publicRoutes.some(r => req.originalUrl.startsWith(r))) {
           return next();
       }
 
       // Solo validar rutas de API protegidas
-      if (!req.path.startsWith('/api/v1/')) {
+      if (!req.originalUrl.startsWith('/api/v1/')) {
           return next();
       }
 
@@ -78,7 +79,13 @@ async function startServer() {
               include: { business: { include: { license: true } } }
           });
 
-          if (!user?.business?.license) return next(); // Sin empresa/licencia, pasar al siguiente
+          if (!user?.business) return next(); // sin empresa = instalación nueva, permitir
+          if (!user?.business?.license) {
+              return res.status(403).json({
+                  error: "license_not_found",
+                  message: "Sistema sin licencia activa. Contacta a tu proveedor Nexus Solutions."
+              });
+          }
 
           const license = user.business.license;
 
@@ -490,10 +497,23 @@ volumes:
   // 🔧 HELPER - obtener businessId del usuario
   // ==========================================
   async function getBusinessId(req: express.Request): Promise<string | null> {
-    const session = await auth.api.getSession({ headers: req.headers as any });
-    if (!session?.user) return null;
-    const user = await prisma.user.findUnique({ where: { id: session.user.id } });
-    return process.env.NEXUS_BUSINESS_ID || user?.businessId || null;
+    try {
+        const session = await auth.api.getSession({ headers: req.headers as any });
+        if (!session?.user) return null;
+
+        // Prioridad 1: variable de entorno
+        if (process.env.NEXUS_BUSINESS_ID) return process.env.NEXUS_BUSINESS_ID;
+
+        // Prioridad 2: businessId del usuario en BD
+        const user = await prisma.user.findUnique({ where: { id: session.user.id } });
+        if (user?.businessId) return user.businessId;
+
+        // Prioridad 3: primera empresa en la BD (para instalaciones nuevas)
+        const firstBusiness = await prisma.business.findFirst({ orderBy: { createdAt: 'asc' } });
+        return firstBusiness?.id || null;
+    } catch {
+        return null;
+    }
   }
 
   // ==========================================
