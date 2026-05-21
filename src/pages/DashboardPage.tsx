@@ -1,104 +1,61 @@
 import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, 
-  Users, 
+  ShoppingCart, 
   DollarSign, 
-  Activity,
+  Package,
   ArrowUpRight,
   ArrowDownRight,
-  MoreHorizontal
+  AlertTriangle,
+  Clock,
+  ArrowRight
 } from 'lucide-react';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  BarChart,
-  Bar
-} from 'recharts';
 import { useAppStore } from '../store/useAppStore';
 import { Skeleton } from '../components/Skeleton';
-import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 
-const revenueData = [
-  { name: 'Ene', value: 4000 },
-  { name: 'Feb', value: 3000 },
-  { name: 'Mar', value: 5000 },
-  { name: 'Abr', value: 4500 },
-  { name: 'May', value: 6000 },
-  { name: 'Jun', value: 7000 },
-  { name: 'Jul', value: 8500 },
-];
-
-const salesData = [
-  { name: 'Lun', sales: 120 },
-  { name: 'Mar', sales: 132 },
-  { name: 'Mié', sales: 101 },
-  { name: 'Jue', sales: 143 },
-  { name: 'Vie', sales: 190 },
-  { name: 'Sáb', sales: 230 },
-  { name: 'Dom', sales: 210 },
-];
+interface DashboardStats {
+  ventasMes: number;
+  ventasMesAnterior: number;
+  crecimiento: number;
+  gastosMes: number;
+  utilidadMes: number;
+  totalVentasMes: number;
+  productosStockBajo: number;
+  comprasPendientes: number;
+  topProductos: { name: string; sku: string; quantity: number; subtotal: number }[];
+  ventasUltimos7Dias: { dia: string; total: number }[];
+}
 
 export function DashboardPage() {
   const { theme } = useAppStore();
-  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
 
-  // Colors adapted to theme
-  const isDark = theme === 'dark';
-  const chartTextColor = isDark ? '#94a3b8' : '#64748b';
-  const chartGridColor = isDark ? '#1e293b' : '#f1f5f9';
-  const tooltipBg = isDark ? '#0f172a' : '#ffffff';
-  const tooltipBorder = isDark ? '#1e293b' : 'none';
-  const tooltipText = isDark ? '#f8fafc' : '#1a2444';
-  const primaryChartColor = isDark ? '#60a5fa' : '#1a2444';
-  const accentChartColor = isDark ? '#3b82f6' : '#3b82f6';
-  const gridStrokeDasharray = "3 3";
-
-  // Simulate network load
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1500);
-    return () => clearTimeout(timer);
+    const fetchStats = async () => {
+      try {
+        const token = localStorage.getItem('nexus_session_token');
+        const res = await fetch('/api/v1/dashboard/stats', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          setStats(await res.json());
+        } else {
+          toast.error('Error al cargar métricas');
+        }
+      } catch (error) {
+        toast.error('Error de conexión');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStats();
   }, []);
 
-  const kpis = [
-    {
-      title: t('dashboard.totalRevenue'),
-      value: "$124,563.00",
-      change: "+14.5%",
-      isPositive: true,
-      icon: DollarSign,
-    },
-    {
-      title: t('dashboard.activeUsers'),
-      value: "8,432",
-      change: "+5.2%",
-      isPositive: true,
-      icon: Users,
-    },
-    {
-      title: t('dashboard.salesConversion'),
-      value: "3.24%",
-      change: "-1.1%",
-      isPositive: false,
-      icon: Activity,
-    },
-    {
-      title: t('dashboard.growthRate'),
-      value: "24.8%",
-      change: "+2.4%",
-      isPositive: true,
-      icon: TrendingUp,
-    }
-  ];
-
-  if (isLoading) {
+  if (isLoading || !stats) {
     return (
       <div className="space-y-6">
         <div>
@@ -115,17 +72,67 @@ export function DashboardPage() {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <Skeleton className="xl:col-span-2 h-[420px] rounded-2xl" />
           <Skeleton className="xl:col-span-1 h-[420px] rounded-2xl" />
-          <Skeleton className="xl:col-span-3 h-80 rounded-2xl" />
         </div>
       </div>
     );
   }
 
+  const kpis = [
+    {
+      title: 'Ventas del Mes',
+      value: `$${stats.ventasMes.toFixed(2)}`,
+      change: `${stats.crecimiento > 0 ? '+' : ''}${stats.crecimiento}%`,
+      isPositive: stats.crecimiento >= 0,
+      icon: DollarSign,
+    },
+    {
+      title: 'Gastos del Mes',
+      value: `$${stats.gastosMes.toFixed(2)}`,
+      change: null,
+      isPositive: true,
+      icon: TrendingUp,
+    },
+    {
+      title: 'Utilidad del Mes',
+      value: `$${stats.utilidadMes.toFixed(2)}`,
+      change: null,
+      isPositive: stats.utilidadMes >= 0,
+      icon: ActivityIcon,
+      color: stats.utilidadMes >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+    },
+    {
+      title: 'Total Ventas',
+      value: stats.totalVentasMes.toString(),
+      change: null,
+      isPositive: true,
+      icon: ShoppingCart,
+    }
+  ];
+
+  const maxSale = Math.max(...stats.ventasUltimos7Dias.map(d => d.total), 1); // fallback to 1 to avoid / 0
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t('dashboard.title')}</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('dashboard.subtitle')}</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard General</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Resumen del rendimiento de tu negocio</p>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          {stats.comprasPendientes > 0 && (
+            <Link to="/purchases" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 rounded-full text-sm font-medium hover:bg-amber-200 dark:hover:bg-amber-500/20 transition-colors">
+              <Clock size={16} />
+              {stats.comprasPendientes} compras pendientes
+            </Link>
+          )}
+          {stats.productosStockBajo > 0 && (
+            <Link to="/inventory" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400 rounded-full text-sm font-medium hover:bg-red-200 dark:hover:bg-red-500/20 transition-colors">
+              <AlertTriangle size={16} />
+              {stats.productosStockBajo} bajo en stock
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* KPIs Bento Grid */}
@@ -133,140 +140,132 @@ export function DashboardPage() {
         {kpis.map((kpi, i) => {
           const Icon = kpi.icon;
           return (
-            <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl border border-nexus-border dark:border-slate-800 p-6 shadow-sm hover:shadow-md transition-all group flex flex-col justify-between">
+            <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-md transition-all group flex flex-col justify-between">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-500 dark:text-slate-400 truncate">{kpi.title}</p>
-                  <h3 className="text-2xl lg:text-[26px] xl:text-[24px] 2xl:text-3xl font-bold text-slate-900 dark:text-white mt-2 font-mono tracking-tight truncate">{kpi.value}</h3>
+                  <h3 className={`text-2xl lg:text-[26px] xl:text-[24px] 2xl:text-3xl font-bold mt-2 font-mono tracking-tight truncate ${kpi.color ? kpi.color : 'text-slate-900 dark:text-white'}`}>
+                    {kpi.value}
+                  </h3>
                 </div>
-                <div className="flex-shrink-0 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-300 group-hover:bg-nexus-primary group-hover:text-white dark:group-hover:bg-nexus-accent transition-colors">
+                <div className="flex-shrink-0 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-300 group-hover:bg-nexus-accent group-hover:text-white transition-colors">
                   <Icon size={20} />
                 </div>
               </div>
-              <div className="mt-4 flex items-center text-sm">
-                <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md font-medium ${
-                  kpi.isPositive ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400'
-                }`}>
-                  {kpi.isPositive ? <ArrowUpRight size={14} className="mr-1" /> : <ArrowDownRight size={14} className="mr-1" />}
-                  {kpi.change}
-                </span>
-                <span className="text-slate-500 dark:text-slate-500 ml-2">{t('dashboard.vsLastMonth')}</span>
-              </div>
+              {kpi.change !== null && (
+                <div className="mt-4 flex items-center text-sm">
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md font-medium ${
+                    kpi.isPositive ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400'
+                  }`}>
+                    {kpi.isPositive ? <ArrowUpRight size={14} className="mr-1" /> : <ArrowDownRight size={14} className="mr-1" />}
+                    {kpi.change}
+                  </span>
+                  <span className="text-slate-500 ml-2">vs mes anterior</span>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* Main Charts Bento Area */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        
-        {/* Large Chart: Area Spread */}
-        <div className="xl:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-nexus-border dark:border-slate-800 shadow-sm overflow-hidden flex flex-col transition-colors">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900">
+        {/* Gráfica de Barras - Ventas Últimos 7 Días */}
+        <div className="xl:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
+          <div className="flex items-center justify-between mb-8">
             <div>
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white">{t('dashboard.revenueSummary')}</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">{t('dashboard.revenueDesc')}</p>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Ventas (Últimos 7 días)</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Rendimiento diario</p>
             </div>
-            <select className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg py-1.5 px-3 focus:outline-none focus:ring-2 focus:ring-nexus-accent outline-none">
-              <option>{t('dashboard.thisYear')}</option>
-              <option>{t('dashboard.lastYear')}</option>
-            </select>
+            <Link to="/reports" className="text-sm font-medium text-nexus-accent hover:text-blue-600 flex items-center gap-1">
+              Ver reporte <ArrowRight size={16} />
+            </Link>
           </div>
-          <div className="p-6 flex-1 min-h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={primaryChartColor} stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor={primaryChartColor} stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray={gridStrokeDasharray} vertical={false} stroke={chartGridColor} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: chartTextColor }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: chartTextColor }} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: tooltipBg, borderRadius: '8px', border: tooltipBorder !== 'none' ? `1px solid ${tooltipBorder}` : 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)' }}
-                  itemStyle={{ color: tooltipText, fontWeight: 600 }}
-                />
-                <Area type="monotone" dataKey="value" stroke={primaryChartColor} strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
-              </AreaChart>
-            </ResponsiveContainer>
+          
+          <div className="h-64 flex items-end justify-between gap-2 mt-4 relative">
+            {/* Background grid lines */}
+            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+              <div className="border-t border-slate-100 dark:border-slate-800/50 w-full"></div>
+              <div className="border-t border-slate-100 dark:border-slate-800/50 w-full"></div>
+              <div className="border-t border-slate-100 dark:border-slate-800/50 w-full"></div>
+              <div className="border-t border-slate-100 dark:border-slate-800/50 w-full"></div>
+              <div className="border-t border-slate-200 dark:border-slate-800 w-full"></div>
+            </div>
+
+            {stats.ventasUltimos7Dias.map((day, ix) => {
+              const heightPct = (day.total / maxSale) * 100;
+              return (
+                <div key={ix} className="flex-1 flex flex-col items-center gap-2 group relative z-10 h-full justify-end">
+                  {/* Tooltip */}
+                  <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs px-2 py-1 rounded font-mono shadow-sm pointer-events-none whitespace-nowrap">
+                    ${day.total.toFixed(2)}
+                  </div>
+                  {/* Bar */}
+                  <div 
+                    className="w-full max-w-[48px] bg-nexus-accent/80 hover:bg-nexus-accent rounded-t-lg transition-all duration-300 min-h-[4px]"
+                    style={{ height: `${heightPct}%` }}
+                  ></div>
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{day.dia}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* Small Data: Bar Volume */}
-        <div className="xl:col-span-1 bg-white dark:bg-slate-900 rounded-2xl border border-nexus-border dark:border-slate-800 shadow-sm overflow-hidden flex flex-col transition-colors">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900">
-            <div>
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white">{t('dashboard.salesVolume')}</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">{t('dashboard.salesVolumeDesc')}</p>
-            </div>
-            <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-              <MoreHorizontal size={20} />
-            </button>
+        {/* Top Productos del Mes */}
+        <div className="xl:col-span-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 flex flex-col">
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Top 5 Productos</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Más vendidos este mes</p>
           </div>
-          <div className="p-6 flex-1 min-h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={salesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray={gridStrokeDasharray} vertical={false} stroke={chartGridColor} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: chartTextColor }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: chartTextColor }} />
-                <Tooltip 
-                  cursor={{ fill: isDark ? '#1e293b' : '#f1f5f9' }}
-                  contentStyle={{ backgroundColor: tooltipBg, borderRadius: '8px', border: tooltipBorder !== 'none' ? `1px solid ${tooltipBorder}` : 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  itemStyle={{ color: tooltipText, fontWeight: 600 }}
-                />
-                <Bar dataKey="sales" fill={accentChartColor} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          
+          <div className="flex-1 flex flex-col gap-4">
+            {stats.topProductos.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center text-slate-500 dark:text-slate-400 text-sm">
+                No hay ventas este mes aún.
+              </div>
+            ) : (
+              stats.topProductos.map((product, idx) => (
+                <div key={idx} className="flex items-center gap-4 justify-between group">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400 font-bold text-sm border border-slate-100 dark:border-slate-700">
+                      {idx + 1}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white truncate" title={product.name}>{product.name}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{product.quantity} unidades vendidas</p>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white font-mono">${product.subtotal.toFixed(2)}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
-        {/* Bottom Wide Bento: Transactions */}
-        <div className="xl:col-span-3 bg-white dark:bg-slate-900 rounded-2xl border border-nexus-border dark:border-slate-800 p-6 shadow-sm transition-colors">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{t('dashboard.recentTransactions')}</h3>
-            <button className="text-sm font-medium text-nexus-accent hover:text-nexus-primary dark:hover:text-blue-400 transition-colors">{t('dashboard.viewAll')}</button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
-                <tr>
-                  <th className="px-4 py-3 font-medium">{t('dashboard.tableId')}</th>
-                  <th className="px-4 py-3 font-medium">{t('dashboard.tableCustomer')}</th>
-                  <th className="px-4 py-3 font-medium">{t('dashboard.tableDate')}</th>
-                  <th className="px-4 py-3 font-medium">{t('dashboard.tableAmount')}</th>
-                  <th className="px-4 py-3 font-medium">{t('dashboard.tableStatus')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50 dark:divide-slate-800/60">
-                {[
-                  { id: "TRX-8932", customer: "Empresa Alfa S.A.", date: "15 May 2024", amount: "$1,250.00", status: t('dashboard.statusCompleted'), originStatus: 'Completada' },
-                  { id: "TRX-8931", customer: "María González", date: "15 May 2024", amount: "$340.50", status: t('dashboard.statusPending'), originStatus: 'Pendiente' },
-                  { id: "TRX-8930", customer: "Tech Solutions Inc.", date: "14 May 2024", amount: "$4,500.00", status: t('dashboard.statusCompleted'), originStatus: 'Completada' },
-                  { id: "TRX-8929", customer: "Juan Pérez", date: "13 May 2024", amount: "$125.00", status: t('dashboard.statusCancelled'), originStatus: 'Cancelada' },
-                ].map((trx, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-slate-700 dark:text-slate-300">
-                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{trx.id}</td>
-                    <td className="px-4 py-3">{trx.customer}</td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{trx.date}</td>
-                    <td className="px-4 py-3 font-medium">{trx.amount}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        trx.originStatus === 'Completada' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20' : 
-                        trx.originStatus === 'Pendiente' ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20' : 
-                        'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 border border-rose-100 dark:border-rose-500/20'
-                      }`}>
-                        {trx.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
       </div>
     </div>
   );
 }
+
+// Inline fallback icon for Activity if it wasn't imported correctly top
+function ActivityIcon(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+    </svg>
+  );
+}
+

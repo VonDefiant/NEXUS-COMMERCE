@@ -497,6 +497,69 @@ volumes:
   }
 
   // ==========================================
+  // 📊 DASHBOARD STATS
+  // ==========================================
+  app.get('/api/v1/dashboard/stats', async (req, res) => {
+    const businessId = await getBusinessId(req);
+    if (!businessId) return res.status(401).json({ error: 'No autorizado' });
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    const [salesMonth, salesLastMonth, expenses, lowStock, pendingPurchases, topProducts, salesByDay] = await Promise.all([
+      prisma.sale.aggregate({ where: { businessId, status: { not: 'cancelled' }, createdAt: { gte: startOfMonth } }, _sum: { total: true }, _count: true }),
+      prisma.sale.aggregate({ where: { businessId, status: { not: 'cancelled' }, createdAt: { gte: startOfLastMonth, lte: endOfLastMonth } }, _sum: { total: true } }),
+      prisma.expense.aggregate({ where: { businessId, date: { gte: startOfMonth } }, _sum: { amount: true } }),
+      prisma.product.findMany({ where: { businessId, isActive: true }, select: { stock: true, minStock: true } }).then(products => products.filter((p: any) => p.stock <= p.minStock).length).catch(() => 0),
+      prisma.purchase.count({ where: { businessId, status: 'pending' } }),
+      prisma.saleItem.groupBy({ by: ['productId'], where: { sale: { businessId, createdAt: { gte: startOfMonth } } }, _sum: { quantity: true, subtotal: true }, orderBy: { _sum: { subtotal: 'desc' } }, take: 5 }),
+      prisma.sale.findMany({ where: { businessId, createdAt: { gte: startOfMonth }, status: { not: 'cancelled' } }, select: { createdAt: true, total: true }, orderBy: { createdAt: 'asc' } }),
+    ]);
+
+    // Top productos con nombres
+    const topProductsWithNames = await Promise.all(
+      topProducts.map(async (p: any) => {
+        const product = await prisma.product.findUnique({ where: { id: p.productId }, select: { name: true, sku: true } });
+        return { ...p, name: product?.name || 'Desconocido', sku: product?.sku || '' };
+      })
+    );
+
+    // Ventas por día (últimos 7 días)
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (6 - i));
+      return d.toISOString().split('T')[0];
+    });
+    const salesByDayMap = salesByDay.reduce((acc: any, s: any) => {
+      const day = s.createdAt.toISOString().split('T')[0];
+      acc[day] = (acc[day] || 0) + s.total;
+      return acc;
+    }, {});
+
+    const ventasMes = salesMonth._sum.total || 0;
+    const ventasMesAnterior = salesLastMonth._sum.total || 0;
+    const gastosMes = expenses._sum.amount || 0;
+    const crecimiento = ventasMesAnterior > 0 ? ((ventasMes - ventasMesAnterior) / ventasMesAnterior * 100).toFixed(1) : '0';
+
+    res.json({
+      ventasMes,
+      ventasMesAnterior,
+      crecimiento: parseFloat(crecimiento as string),
+      gastosMes,
+      utilidadMes: ventasMes - gastosMes,
+      totalVentasMes: salesMonth._count,
+      productosStockBajo: lowStock,
+      comprasPendientes: pendingPurchases,
+      topProductos: topProductsWithNames,
+      ventasUltimos7Dias: last7Days.map(day => ({
+        dia: new Date(day).toLocaleDateString('es-GT', { weekday: 'short', day: 'numeric' }),
+        total: salesByDayMap[day] || 0
+      }))
+    });
+  });
+
+  // ==========================================
   // 📦 PRODUCTOS (Helper for frontend)
   // ==========================================
   app.get('/api/v1/products', async (req, res) => {
