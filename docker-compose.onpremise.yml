@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  nexus_app:
+    build:
+      context: .
+      dockerfile: Dockerfile.onpremise
+    container_name: nexus_onpremise_app
+    ports:
+      - "3000:3000"
+    # ESTO ES MAGIA: Docker se encarga de reiniciar la app si se crashea o si el servidor se reinicia
+    restart: always 
+    environment:
+      # Se conecta automáticamente a la base de datos de abajo
+      - DATABASE_URL=postgresql://nexus_admin:superpassword123@nexus_db:5432/nexus_database
+      # Llaves maestras
+      - BETTER_AUTH_SECRET=secreto-para-sesiones-del-cliente
+    depends_on:
+      nexus_db:
+        condition: service_healthy
+
+  nexus_db:
+    image: postgres:15-alpine
+    container_name: nexus_onpremise_db
+    restart: always
+    environment:
+      - POSTGRES_USER=nexus_admin
+      - POSTGRES_PASSWORD=superpassword123
+      - POSTGRES_DB=nexus_database
+    volumes:
+      # Volumen persistente para que no se borren los datos si se apaga el contenedor
+      - nexus_db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus_admin -d nexus_database"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # SISTEMA DE BACKUPS AUTOMÁTICOS (Núcleo al 200%)
+  nexus_db_backup:
+    image: prodrigestivill/postgres-backup-local:15
+    container_name: nexus_onpremise_backup
+    restart: always
+    depends_on:
+      nexus_db:
+        condition: service_healthy
+    volumes:
+      - nexus_db_backups:/backups
+    environment:
+      - POSTGRES_USER=nexus_admin
+      - POSTGRES_PASSWORD=superpassword123
+      - POSTGRES_DB=nexus_database
+      - POSTGRES_HOST=nexus_db
+      - SCHEDULE=@daily
+      - BACKUP_KEEP_DAYS=7
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=2
+
+volumes:
+  nexus_db_data:
+  nexus_db_backups:

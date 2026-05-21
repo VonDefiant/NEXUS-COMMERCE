@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String
+  emailVerified Boolean
+  image         String?
+  role          String    @default("user") // admin | user
+  businessId    String?
+  branchId      String?   // <-- Sucursal asignada (si aplica)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  business      Business?  @relation(fields: [businessId], references: [id])
+  branch        Branch?    @relation(fields: [branchId], references: [id])
+  sessions      Session[]
+  accounts      Account[]
+  
+  @@unique([email])
+  @@map("user")
+}
+
+model Business {
+  id           String   @id @default(uuid())
+  name         String
+  logoUrl      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  users        User[]
+  branches     Branch[] // <-- Sucursales que pertenecen a esta empresa
+  license      License?
+  products     Product[]
+  transactions Transaction[]
+  
+  @@map("business")
+}
+
+model Branch {
+  id           String   @id @default(uuid())
+  name         String
+  address      String?
+  phone        String?
+  isActive     Boolean  @default(true)
+  businessId   String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  users        User[]
+  transactions Transaction[]
+
+  @@map("branch")
+}
+
+model License {
+  id         String   @id @default(uuid())
+  status     String   @default("active") // active | suspended
+  type       String   @default("cloud")  // cloud | on-premise
+  validUntil DateTime
+  supportPin String   @unique
+  signature  String? // Rúbrica criptográfica para blindaje On-Premise
+  planName   String
+  businessId String   @unique
+  
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  @@map("license")
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  sku         String   @unique
+  price       Float
+  stock       Int      @default(0)
+  businessId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  
+  @@map("product")
+}
+
+model TelemetryPing {
+  id            String   @id @default(uuid())
+  businessId    String   @unique
+  businessName  String?
+  planName      String?
+  userCount     Int      @default(0)
+  branchCount   Int      @default(0)
+  signature     String?
+  ipAddress     String?
+  hostingType   String   @default("on-premise")
+  cpuLoad       Float?
+  ramUsage      Float?
+  dbSize        String?
+  lastPingAt    DateTime @default(now())
+  
+  @@map("telemetry_ping")
+}
+
+model TelemetryHistory {
+  id          String   @id @default(uuid())
+  businessId  String
+  userCount   Int
+  branchCount Int      @default(0)
+  cpuLoad     Float?
+  ramUsage    Float?
+  pingedAt    DateTime @default(now())
+  
+  @@map("telemetry_history")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  details   String?
+  userId    String?
+  userEmail String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_log")
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  type        String   @default("sale") // sale | purchase
+  quantity    Int
+  totalAmount Float
+  productId   String
+  businessId  String
+  branchId    String?  // <-- Registramos en qué sucursal se hizo (opcional por retrocompatibilidad, pero recomendado)
+  createdAt   DateTime @default(now())
+  
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch      Branch?  @relation(fields: [branchId], references: [id])
+  
+  @@map("transaction")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  @@map("verification")
+}

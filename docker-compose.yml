@@ -1,0 +1,16 @@
+version: '3.8'
+
+# docker-compose.yml (Para desarrollo local o pruebas de tu versión SaaS)
+# Para levantar esto ejecuta: docker-compose up --build
+
+services:
+  nexus_cloud:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nexus_cloud_app
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    env_file:
+      - .env
