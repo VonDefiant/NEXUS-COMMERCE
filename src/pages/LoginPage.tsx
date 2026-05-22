@@ -62,8 +62,27 @@ export function LoginPage() {
         credentials: 'include'
       });
       if (!res.ok) {
-        // Obtenemos los detalles si falló para debugear
         const errorText = await res.text();
+        const licenseErrors = ['license_tampered', 'license_not_found', 'license_expired', 'license_suspended'];
+        
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error && licenseErrors.includes(errorJson.error)) {
+             // Es un error de licencia, lo logueamos con estado mínimo para que salte LicenseBlockedPage
+             login({ 
+               id: authData?.user?.id || 'unknown', 
+               name: authData?.user?.name || 'Usuario', 
+               email: authData?.user?.email || email,
+               role: 'user',
+               businessName: '...',
+               license: { status: errorJson.error } 
+             } as any);
+             return;
+          }
+        } catch(e) {
+          // ignore json parse error
+        }
+        
         throw new Error(`Error BD API: ${errorText}`);
       }
       

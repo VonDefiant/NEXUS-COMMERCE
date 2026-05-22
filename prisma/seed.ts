@@ -1,8 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { auth } from '../server/auth.ts';
 
-import { generateLicenseSignature } from '../server/license-crypto.ts';
-
 const prisma = new PrismaClient();
 
 async function main() {
@@ -18,24 +16,6 @@ async function main() {
     data: {
       name: 'Ferretería El Martillo (Nexus Demo)',
       logoUrl: null,
-    },
-  });
-
-  console.log('🌱 Seed: Creando Licencia Activa...');
-  const validUntil = new Date(Date.now() + 1000 * 60 * 60 * 24 * 365); // 1 año desde hoy
-  
-  // Generar la firma para la semilla usando la misma lógica
-  const signature = generateLicenseSignature(business.id, 'Nexus Core PRO', validUntil, 'active');
-
-  await prisma.license.create({
-    data: {
-      status: 'active',
-      type: 'cloud',
-      validUntil: validUntil,
-      supportPin: Math.random().toString(36).slice(2, 8).toUpperCase(),
-      planName: 'Nexus Core PRO',
-      businessId: business.id,
-      signature: signature,
     },
   });
 

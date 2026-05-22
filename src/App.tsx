@@ -21,7 +21,7 @@ import { SuppliersPage } from './pages/SuppliersPage';
 import { PurchasesPage } from './pages/PurchasesPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { InventoryPage } from './pages/InventoryPage';
-import { SuspendedPage } from './pages/SuspendedPage';
+import { LicenseBlockedPage } from './pages/LicenseBlockedPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { useAppStore } from './store/useAppStore';
 import { PageWrapper } from './components/PageWrapper';
@@ -58,10 +58,12 @@ export default function App() {
   }
 
   // License Hard-Stop Guard
-  if (user?.license?.status === 'suspended') {
+  const isLicenseInvalid = ['suspended', 'license_not_found', 'license_tampered', 'license_expired', 'license_suspended'].includes(user?.license?.status as string);
+  
+  if (isLicenseInvalid) {
     return (
       <>
-        <SuspendedPage />
+        <LicenseBlockedPage />
         <Toaster theme={theme} position="top-right" richColors />
       </>
     );

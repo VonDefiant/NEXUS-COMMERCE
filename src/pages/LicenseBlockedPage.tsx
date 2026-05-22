@@ -4,9 +4,24 @@ import { useAppStore } from '../store/useAppStore';
 import { ShieldAlert, LogOut, Mail, Phone } from 'lucide-react';
 import { Logo } from '../components/Logo';
 
-export function SuspendedPage() {
+export function LicenseBlockedPage() {
   const { t } = useTranslation();
   const { login, logout, user } = useAppStore();
+
+  const getMessage = () => {
+    switch (user?.license?.status) {
+      case 'license_not_found':
+        return 'Sin Licencia Activa';
+      case 'license_tampered':
+        return 'Licencia Comprometida';
+      case 'license_expired':
+        return 'Licencia Expirada';
+      case 'license_suspended':
+        return 'Licencia Suspendida';
+      default:
+        return 'Sin Licencia Activa';
+    }
+  };
 
   React.useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
@@ -55,11 +70,11 @@ export function SuspendedPage() {
           </div>
           
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">
-            Licencia Suspendida
+            {getMessage()}
           </h2>
           
           <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 leading-relaxed">
-            El acceso al sistema operativo para <strong className="text-slate-700 dark:text-slate-300">{user?.businessName}</strong> ha sido pausado. Por favor, comunícate con el administrador de tu sistema o con el departamento de soporte de <strong className="text-nexus-primary dark:text-blue-400">Nexus Solutions</strong> para regularizar el estado de tu cuenta.
+            El acceso al sistema operativo para <strong className="text-slate-700 dark:text-slate-300">{user?.businessName || 'esta cuenta'}</strong> ha sido pausado. Por favor, comunícate con el administrador de tu sistema o con el departamento de soporte de <strong className="text-nexus-primary dark:text-blue-400">Nexus Solutions</strong> para regularizar el estado de tu cuenta.
           </p>
 
           {/* Support Data Box */}
