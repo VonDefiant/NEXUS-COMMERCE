@@ -88,7 +88,7 @@ async function startServer() {
 
           if (!business) return next();
           if (!business.license) {
-              return res.status(403).json({ error: "license_not_found", message: "Sistema sin licencia activa. Contacta a tu proveedor Nexus Solutions." });
+              return res.status(401).json({ error: "license_not_found", message: "Sistema sin licencia activa. Contacta a tu proveedor Nexus Solutions." });
           }
 
           const license = business.license;
@@ -96,7 +96,7 @@ async function startServer() {
           // 1. Verificar integridad criptográfica (anti-tampering)
           if (!verifyLicenseIntegrity(license)) {
               logger.error(`[LICENSE] FRAUDE DETECTADO: Licencia adulterada en empresa ${business.id}`);
-              return res.status(403).json({
+              return res.status(401).json({
                   error: "license_tampered",
                   message: "La integridad de la licencia ha sido comprometida. Contacta a soporte."
               });
@@ -104,7 +104,7 @@ async function startServer() {
 
           // 2. Verificar que no esté revocada
           if (license.status === 'revoked' || license.status === 'suspended') {
-              return res.status(403).json({
+              return res.status(401).json({
                   error: "license_suspended",
                   message: "Licencia suspendida o revocada. Contacta a soporte."
               });
@@ -112,7 +112,7 @@ async function startServer() {
 
           // 3. Verificar que no haya expirado
           if (new Date(license.validUntil) < new Date()) {
-              return res.status(403).json({
+              return res.status(401).json({
                   error: "license_expired",
                   message: "Licencia expirada. Contacta a soporte para renovar."
               });
@@ -333,7 +333,7 @@ async function startServer() {
 
           if (expectedSignature !== signature) {
               logger.error(`[LICENSE] ALERTA: Firma inválida recibida para businessId ${businessId}. Posible ataque.`);
-              return res.status(403).json({ error: "Firma criptográfica inválida" });
+              return res.status(401).json({ error: "Firma criptográfica inválida" });
           }
 
           // Buscar la empresa
@@ -417,7 +417,7 @@ async function startServer() {
       if (!session || !session.user) return res.status(401).json({ error: "No autorizado" });
       
       const user = await prisma.user.findUnique({ where: { id: session.user.id } });
-      if (user?.role !== 'admin') return res.status(403).json({ error: "Acceso denegado (Solo Admins)" });
+      if (user?.role !== 'admin') return res.status(401).json({ error: "Acceso denegado (Solo Admins)" });
 
       const logs = await prisma.auditLog.findMany({
         orderBy: { createdAt: 'desc' },
@@ -438,7 +438,7 @@ async function startServer() {
       if (!session || !session.user) return res.status(401).json({ error: "No autorizado" });
       
       const user = await prisma.user.findUnique({ where: { id: session.user.id } });
-      if (user?.role !== 'admin') return res.status(403).json({ error: "Acceso denegado (Solo Admins)" });
+      if (user?.role !== 'admin') return res.status(401).json({ error: "Acceso denegado (Solo Admins)" });
 
       const { clientName, deploymentType, databaseUrl } = req.body;
       const ipAddress = req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown';

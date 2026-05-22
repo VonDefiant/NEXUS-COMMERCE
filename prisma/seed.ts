@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
-import { v4 as uuidv4 } from 'uuid'; // need to handle lack of uuid. actually, we don't need uuid if id is auto via @default(uuid()) for other models, but user id comes from BetterAuth usually so we assign it.
+import { auth } from '../server/auth.ts';
+
+import { generateLicenseSignature } from '../server/license-crypto.ts';
 
 const prisma = new PrismaClient();
 
@@ -20,30 +22,36 @@ async function main() {
   });
 
   console.log('🌱 Seed: Creando Licencia Activa...');
+  const validUntil = new Date(Date.now() + 1000 * 60 * 60 * 24 * 365); // 1 año desde hoy
+  
+  // Generar la firma para la semilla usando la misma lógica
+  const signature = generateLicenseSignature(business.id, 'Nexus Core PRO', validUntil, 'active');
+
   await prisma.license.create({
     data: {
       status: 'active',
       type: 'cloud',
-      validUntil: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365), // 1 año desde hoy
+      validUntil: validUntil,
       supportPin: Math.random().toString(36).slice(2, 8).toUpperCase(),
       planName: 'Nexus Core PRO',
       businessId: business.id,
+      signature: signature,
     },
   });
 
   console.log('🌱 Seed: Creando Cuenta de Administrador...');
-  const adminUser = await prisma.user.create({
-    data: {
-      id: uuidv4(),
-      name: 'Usuario Admin',
+  const { user } = await auth.api.signUpEmail({
+    body: {
       email: 'admin@nexus.com',
-      emailVerified: true,
-      image: 'https://picsum.photos/seed/avatar1/100/100',
-      role: 'admin',
-      businessId: business.id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
+      password: 'Nexus2024!',
+      name: 'Usuario Admin'
+    }
+  });
+  
+  // Luego actualizar el rol y businessId:
+  const adminUser = await prisma.user.update({
+    where: { id: user.id },
+    data: { role: 'admin', businessId: business.id }
   });
 
   console.log('🌱 Seed: Añadiendo Catálogo de Productos y Transacciones...');

@@ -24,7 +24,7 @@ export const auth = betterAuth({
     plugins: [bearer()],
     emailAndPassword: {
         enabled: true,
-        minPasswordLength: 12,
+        minPasswordLength: 8,
         maxPasswordLength: 128,
         sendResetPassword: async ({ user, url }, request) => {
             if (!process.env.RESEND_API_KEY) {
