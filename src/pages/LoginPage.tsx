@@ -52,7 +52,7 @@ export function LoginPage() {
       }
 
       // 2. Fetch enriched user data from our backend
-      const token = localStorage.getItem("nexus_session_token") || authData?.token || authData?.session?.token;
+      const token = localStorage.getItem("nexus_session_token") || (authData as any)?.token || (authData as any)?.session?.token;
       
       const res = await fetch('/api/v1/auth/me', {
         headers: {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Select, ChevronDown, Receipt, TrendingUp } from 'lucide-react';
+import { Plus, Search, ChevronDown, Receipt, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Expense {

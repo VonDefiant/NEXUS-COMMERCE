@@ -95,7 +95,7 @@ async function startServer() {
 
           // 1. Verificar integridad criptográfica (anti-tampering)
           if (!verifyLicenseIntegrity(license)) {
-              logger.error(`[LICENSE] FRAUDE DETECTADO: Licencia adulterada en empresa ${user.business.id}`);
+              logger.error(`[LICENSE] FRAUDE DETECTADO: Licencia adulterada en empresa ${business.id}`);
               return res.status(403).json({
                   error: "license_tampered",
                   message: "La integridad de la licencia ha sido comprometida. Contacta a soporte."
@@ -616,7 +616,7 @@ volumes:
       if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
       const product = await prisma.product.create({
         data: {
-          name: name.trim(), sku, barcode, cost: cost || 0, price, description, minStock: minStock || 0,
+          name: name.trim(), sku, barcode, cost: cost || 0, price, minStock: minStock || 0,
           categoryId: categoryId || null, businessId
         }
       });
@@ -631,10 +631,10 @@ volumes:
     try {
       const businessId = await getBusinessId(req);
       if (!businessId) return res.status(401).json({ error: 'No autorizado' });
-      const { name, sku, barcode, cost, price, description, minStock, categoryId, isActive } = req.body;
+      const { name, sku, barcode, cost, price, minStock, categoryId, isActive } = req.body;
       const product = await prisma.product.update({
         where: { id: req.params.id },
-        data: { name, sku, barcode, cost, price, description, minStock, categoryId, isActive }
+        data: { name, sku, barcode, cost, price, minStock, categoryId, isActive }
       });
       res.json(product);
     } catch (e: any) {
