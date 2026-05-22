@@ -58,7 +58,7 @@ export default function App() {
   }
 
   // License Hard-Stop Guard
-  const isLicenseInvalid = ['suspended', 'license_not_found', 'license_tampered', 'license_expired', 'license_suspended'].includes(user?.license?.status as string);
+  const isLicenseInvalid = !user?.license || user.license.status !== 'active';
   
   if (isLicenseInvalid) {
     return (

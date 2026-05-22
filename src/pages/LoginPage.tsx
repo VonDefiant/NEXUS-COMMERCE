@@ -64,26 +64,31 @@ export function LoginPage() {
       if (!res.ok) {
         const errorText = await res.text();
         const licenseErrors = ['license_tampered', 'license_not_found', 'license_expired', 'license_suspended'];
-        
+        let errorCode: string | null = null;
+        let businessName: string | null = null;
+
         try {
           const errorJson = JSON.parse(errorText);
-          if (errorJson.error && licenseErrors.includes(errorJson.error)) {
-             // Es un error de licencia, lo logueamos con estado mínimo para que salte LicenseBlockedPage
-             login({ 
-               id: authData?.user?.id || 'unknown', 
-               name: authData?.user?.name || 'Usuario', 
-               email: authData?.user?.email || email,
-               role: 'user',
-               businessName: '...',
-               license: { status: errorJson.error } 
-             } as any);
-             return;
-          }
-        } catch(e) {
-          // ignore json parse error
+          errorCode = errorJson?.error ?? null;
+          businessName = errorJson?.businessName ?? null;
+        } catch (_) {
+          // El proxy devolvió HTML — tratar como license_not_found
+          errorCode = 'license_not_found';
         }
-        
-        throw new Error(`Error BD API: ${errorText}`);
+
+        if (errorCode && licenseErrors.includes(errorCode)) {
+          login({
+            name: (authData as any)?.user?.name || 'Usuario',
+            email: (authData as any)?.user?.email || email,
+            avatar: '',
+            businessName: businessName || '',
+            role: 'user',
+            license: { status: errorCode } as any,
+          } as any);
+          return;
+        }
+
+        throw new Error(`Error al conectar con el servidor (${res.status})`);
       }
       
       const data = await res.json();

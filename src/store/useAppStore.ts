@@ -9,7 +9,7 @@ interface User {
   businessLogo?: string;
   role: 'admin' | 'user';
   license: {
-    status: 'active' | 'suspended';
+    status: 'active' | 'suspended' | 'license_not_found' | 'license_tampered' | 'license_expired' | 'license_suspended';
     type: 'cloud' | 'on-premise';
     validUntil: string;
     supportPin: string;

@@ -56,6 +56,7 @@ async function startServer() {
           '/api/auth',
           '/api/v1/license/update',
           '/api/v1/telemetry/ping',
+          '/api/v1/auth/me',
       ];
 
       if (publicRoutes.some(r => req.originalUrl.startsWith(r))) {
@@ -89,7 +90,7 @@ async function startServer() {
           if (!business) return next();
           if (!business.license) {
               res.setHeader('Content-Type', 'application/json');
-              return res.status(403).json({ error: "license_not_found", message: "Sistema sin licencia activa. Contacta a tu proveedor Nexus Solutions." });
+              return res.status(401).json({ error: "license_not_found", message: "Sistema sin licencia activa. Contacta a tu proveedor Nexus Solutions." });
           }
 
           const license = business.license;
@@ -98,7 +99,7 @@ async function startServer() {
           if (!verifyLicenseIntegrity(license)) {
               logger.error(`[LICENSE] FRAUDE DETECTADO: Licencia adulterada en empresa ${business.id}`);
               res.setHeader('Content-Type', 'application/json');
-              return res.status(403).json({ error: "license_tampered",
+              return res.status(401).json({ error: "license_tampered",
                   message: "La integridad de la licencia ha sido comprometida. Contacta a soporte."
               });
           }
@@ -106,7 +107,7 @@ async function startServer() {
           // 2. Verificar que no esté revocada
           if (license.status === 'revoked' || license.status === 'suspended') {
               res.setHeader('Content-Type', 'application/json');
-              return res.status(403).json({ error: "license_suspended",
+              return res.status(401).json({ error: "license_suspended",
                   message: "Licencia suspendida o revocada. Contacta a soporte."
               });
           }
@@ -114,7 +115,7 @@ async function startServer() {
           // 3. Verificar que no haya expirado
           if (new Date(license.validUntil) < new Date()) {
               res.setHeader('Content-Type', 'application/json');
-              return res.status(403).json({ error: "license_expired",
+              return res.status(401).json({ error: "license_expired",
                   message: "Licencia expirada. Contacta a soporte para renovar."
               });
           }
@@ -179,48 +180,75 @@ async function startServer() {
       });
 
       if (!user) {
-        logger.warn(`Intento de acceso con sesión válida pero sin usuario en BD: ${session.user.id}`);
-        return res.status(404).json({ error: "Usuario no encontrado en la BD principal" });
+        return res.status(404).json({ error: "Usuario no encontrado" });
       }
 
       const business = await prisma.business.findFirst({
-        where: process.env.NEXUS_BUSINESS_ID 
-          ? { id: process.env.NEXUS_BUSINESS_ID } 
+        where: process.env.NEXUS_BUSINESS_ID
+          ? { id: process.env.NEXUS_BUSINESS_ID }
           : { users: { some: { id: session.user.id } } },
         include: { license: true },
         orderBy: { updatedAt: 'desc' }
       });
 
-      // Validamos la integridad criptográfica de la licencia si el usuario pertenece a una empresa
-      let licensePayload = null;
-      if (business?.license) {
-        const dbLicense = business.license;
-        let effectiveStatus = dbLicense.status;
+      // ── VALIDACIÓN DE LICENCIA ───────────────────────────────────
+      // Usamos HTTP 401 (no 403) porque el proxy de la nube (Nginx)
+      // intercepta el 403 y devuelve HTML, rompiendo el JSON del frontend.
 
-        // Comprobación de seguridad matemática
-        if (!verifyLicenseIntegrity(dbLicense)) {
-          logger.error(`ALERTA ROJA DE SEGURIDAD: Se detectó una licencia adulterada matemáticamente en la empresa ${business.id}. Se bloquea la cuenta inmediatamente.`);
-          effectiveStatus = 'suspended'; // Congelamos instantáneamente por fraude manual en BD
-        }
-
-        licensePayload = {
-          status: effectiveStatus,
-          type: dbLicense.type,
-          validUntil: dbLicense.validUntil,
-          supportPin: dbLicense.supportPin,
-          planName: dbLicense.planName
-        };
+      if (!business || !business.license) {
+        res.setHeader('Content-Type', 'application/json');
+        return res.status(401).json({
+          error: 'license_not_found',
+          message: 'Este sistema no tiene una licencia activa. Contacta a Nexus Solutions.',
+          businessName: business?.name ?? null,
+        });
       }
 
-      // Construct payload to match frontend AppState expecting:
+      const dbLicense = business.license;
+
+      if (!verifyLicenseIntegrity(dbLicense)) {
+        logger.error(`[LICENSE] ALERTA ROJA: Licencia adulterada en empresa ${business.id}`);
+        res.setHeader('Content-Type', 'application/json');
+        return res.status(401).json({
+          error: 'license_tampered',
+          message: 'La integridad de la licencia ha sido comprometida. Contacta a soporte.',
+          businessName: business.name,
+        });
+      }
+
+      if (dbLicense.status === 'revoked' || dbLicense.status === 'suspended') {
+        res.setHeader('Content-Type', 'application/json');
+        return res.status(401).json({
+          error: 'license_suspended',
+          message: 'Licencia suspendida o revocada. Contacta a soporte.',
+          businessName: business.name,
+        });
+      }
+
+      if (new Date(dbLicense.validUntil) < new Date()) {
+        res.setHeader('Content-Type', 'application/json');
+        return res.status(401).json({
+          error: 'license_expired',
+          message: 'La licencia ha expirado. Contacta a soporte para renovar.',
+          businessName: business.name,
+        });
+      }
+      // ────────────────────────────────────────────────────────────
+
       const payload = {
         name: user.name,
         email: user.email,
         avatar: user.image || 'https://picsum.photos/seed/avatar1/100/100',
-        businessName: business?.name || 'My Business',
-        businessLogo: business?.logoUrl,
+        businessName: business.name,
+        businessLogo: business.logoUrl,
         role: user.role,
-        license: licensePayload
+        license: {
+          status: dbLicense.status,
+          type: dbLicense.type,
+          validUntil: dbLicense.validUntil,
+          supportPin: dbLicense.supportPin,
+          planName: dbLicense.planName,
+        }
       };
 
       res.json({ user: payload });
